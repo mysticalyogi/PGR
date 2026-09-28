@@ -1,0 +1,126 @@
+name: Update rack rates
+
+on:
+  schedule:
+    # Petro-Canada posts around 3:00 a.m. Eastern. 08:17 UTC is 04:17 EDT / 03:17 EST.
+    - cron: "17 8 * * *"
+    # Recovery attempt for delayed postings or a temporary block.
+    - cron: "47 10 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "run = update dataset; capture = save page HTML for diagnosis"
+        type: choice
+        options: [run, capture]
+        default: run
+      methods:
+        description: "Optional fetch order, e.g. direct,browser,service"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: rack-rates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: src
+      SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+      SCRAPER_PROVIDER: ${{ vars.SCRAPER_PROVIDER || 'scrapingbee' }}
+      GH_TOKEN: ${{ github.token }}
+      METHODS: ${{ inputs.methods }}
+      # The first scheduled attempt fails quietly; the second (or a manual run) raises an issue.
+      EARLY_ATTEMPT: ${{ github.event_name == 'schedule' && github.event.schedule == '17 8 * * *' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Capture page
+        if: inputs.mode == 'capture'
+        run: python -m pgrack capture --out capture ${METHODS:+--methods "$METHODS"}
+
+      - name: Upload capture
+        if: inputs.mode == 'capture'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rack-page-capture
+          path: capture/
+          retention-days: 14
+
+      - name: Run tests
+        if: inputs.mode != 'capture'
+        run: python -m pytest -q
+
+      - name: Fetch, parse, update
+        id: update
+        if: inputs.mode != 'capture'
+        continue-on-error: ${{ github.event_name == 'schedule' && github.event.schedule == '17 8 * * *' }}
+        run: python -m pgrack run --save-html failed_page.html ${METHODS:+--methods "$METHODS"}
+
+      - name: Upload page on parse failure
+        if: always() && steps.update.outputs.category == 'parse'
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-page-${{ github.run_id }}
+          path: failed_page.html
+          retention-days: 14
+
+      - name: Commit dataset changes
+        if: steps.update.outputs.outcome == 'appended' || steps.update.outputs.outcome == 'revised'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git commit -m "data: ${{ steps.update.outputs.outcome }} ${{ steps.update.outputs.effective_date }}"
+          git push
+
+      - name: Notify revision
+        if: steps.update.outputs.outcome == 'revised'
+        env:
+          DETAILS: ${{ steps.update.outputs.details }}
+          EDATE: ${{ steps.update.outputs.effective_date }}
+        run: |
+          gh label create rate-revision --color FBCA04 --force >/dev/null
+          n=$(gh issue list --label rate-revision --state open --json number -q '.[0].number')
+          body="Revised Daily prices for effective date ${EDATE}: ${DETAILS} (run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"
+          else gh issue create --title "Rack rate revisions" --label rate-revision --body "$body"; fi
+
+      - name: Notify repair
+        if: steps.update.outcome == 'success' && inputs.mode != 'capture'
+        run: |
+          for n in $(gh issue list --label tracker-failure --state open --json number -q '.[].number'); do
+            gh issue close "$n" --comment "Repaired: run ${{ github.run_id }} succeeded (${{ steps.update.outputs.outcome }} ${{ steps.update.outputs.effective_date }})."
+          done
+
+      - name: Notify failure
+        if: always() && (steps.update.outcome == 'failure' || failure()) && env.EARLY_ATTEMPT != 'true'
+        env:
+          CATEGORY: ${{ steps.update.outputs.category }}
+          DETAILS: ${{ steps.update.outputs.details }}
+        run: |
+          gh label create tracker-failure --color D73A4A --force >/dev/null
+          n=$(gh issue list --label tracker-failure --state open --json number -q '.[0].number')
+          body="Run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} failed (${CATEGORY:-unknown}): ${DETAILS:-see logs}. Dataset was not modified."
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$body"
+          else gh issue create --title "Rack rate tracker failing" --label tracker-failure --body "$body"; fi
