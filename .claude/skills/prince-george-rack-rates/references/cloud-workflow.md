@@ -54,7 +54,7 @@ The `category` in the failure issue tells you where to look.
 
 ## Integration
 
-The raw CSV URL is `https://raw.githubusercontent.com/zyujia-crypto/PGR/main/data/pg_rack_rates.csv`. It only works without credentials if the repo is public.
+The raw CSV URL is `https://raw.githubusercontent.com/mysticalyogi/PGR/main/data/pg_rack_rates.csv`. It only works without credentials if the repo is public.
 
 - **Google Sheets:** `=IMPORTDATA("<raw url>")`. Sheets refreshes this on its own schedule, roughly hourly.
 - **Excel:** Data → From Web → paste the raw URL → Load. Then open Query Properties and turn on "Refresh data when opening the file".

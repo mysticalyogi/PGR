@@ -3,8 +3,8 @@
 This repo keeps a daily history of Petro-Canada **Daily** rack prices for **Prince George, BC**. Prices are in cents per litre, and each row is keyed by the page's effective date.
 
 - **Dataset:** [`data/pg_rack_rates.csv`](data/pg_rack_rates.csv)
-- **Raw URL:** `https://raw.githubusercontent.com/zyujia-crypto/PGR/main/data/pg_rack_rates.csv`
-- **Google Sheets:** `=IMPORTDATA("https://raw.githubusercontent.com/zyujia-crypto/PGR/main/data/pg_rack_rates.csv")`
+- **Raw URL:** `https://raw.githubusercontent.com/mysticalyogi/PGR/main/data/pg_rack_rates.csv`
+- **Google Sheets:** `=IMPORTDATA("https://raw.githubusercontent.com/mysticalyogi/PGR/main/data/pg_rack_rates.csv")`
 - **Excel:** Data → From Web → paste the raw URL → Load. In Query Properties, turn on "Refresh data when opening the file".
 
 A blank price means the source was blank on that date.

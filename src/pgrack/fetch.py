@@ -18,7 +18,7 @@ SOURCE_URL = "https://www.petro-canada.ca/en/business/rack-prices"
 TIMEOUT = 60
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/128.0 Safari/537.36 pg-rack-tracker (+https://github.com/zyujia-crypto/PGR)"
+    "Chrome/128.0 Safari/537.36 pg-rack-tracker (+https://github.com/mysticalyogi/PGR)"
 )
 
 _BLOCK_MARKERS = re.compile(
